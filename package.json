@@ -1,0 +1,17 @@
+{
+  "name": "peptide-customer-service-mvp",
+  "version": "1.0.0",
+  "description": "Minimal AI customer service MVP for a peptide wholesale business.",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "openai": "^6.37.0"
+  }
+}
