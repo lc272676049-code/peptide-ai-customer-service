@@ -123,20 +123,41 @@ app.post("/api/test-salesmartly-send", async (req, res) => {
 });
 
 app.post("/webhook/salesmartly", async (req, res) => {
+  const payload = req.body || {};
+  const data = payload.data || payload;
   console.log("SaleSmartly webhook received");
-  console.log("event:", req.body.event);
-  console.log("chat_user_id:", req.body?.data?.chat_user_id);
-  console.log("chat_session_id:", req.body?.data?.chat_session_id);
-  console.log("channel:", req.body?.data?.channel);
-  console.log("sender_type:", req.body?.data?.sender_type);
-  console.log("msg_type:", req.body?.data?.msg_type);
-  console.log("msg:", req.body?.data?.msg);
+  console.log("Full SaleSmartly body:", JSON.stringify(req.body, null, 2));
+  console.log("query:", req.query);
+  console.log("headers content-type:", req.headers["content-type"]);
+  console.log("event:", payload.event);
+  console.log("chat_user_id:", data.chat_user_id);
+  console.log("chat_session_id:", data.chat_session_id);
+  console.log("channel:", data.channel);
+  console.log("sender_type:", data.sender_type);
+  console.log("msg_type:", data.msg_type);
+  console.log("msg:", data.msg);
 
   if (!verifySaleSmartlySignature(req)) {
     return res.status(401).json({ code: 401, msg: "Invalid signature" });
   }
 
   const incoming = normalizeIncomingMessage(req.body);
+  if (!incoming.message_text.trim()) {
+    console.log("Missing message_text. Check full body above.");
+    await logConversation(buildConversationLog({
+      route: "/webhook/salesmartly",
+      source: incoming,
+      result: {
+        human_takeover: false,
+        reply: "",
+        products: [],
+        lead_stage: "missing_message_text"
+      }
+    }));
+
+    return res.json({ code: 0, msg: "Success", data: null });
+  }
+
   if (!shouldProcessSaleSmartlyMessage(req.body, incoming)) {
     await logConversation(buildConversationLog({
       route: "/webhook/salesmartly",
@@ -404,31 +425,36 @@ function recommendationCategories(message) {
 }
 
 function getCustomerMessage(body) {
+  const payload = body || {};
+  const data = payload.data || payload;
+
   return String(
-    body.customer_message ||
-      body.message_text ||
-      body.message ||
-      body.text ||
-      body.content ||
-      body.query ||
-      body.data?.customer_message ||
-      body.data?.message_text ||
-      body.data?.msg ||
-      body.data?.message ||
-      body.data?.text ||
-      body.data?.content ||
-      body.entry?.[0]?.messaging?.[0]?.message?.text ||
+    data.msg ||
+      data.message ||
+      data.message_text ||
+      data.text ||
+      data.customer_message ||
+      data.content ||
+      data.query ||
+      payload.customer_message ||
+      payload.message_text ||
+      payload.message ||
+      payload.text ||
+      payload.content ||
+      payload.query ||
+      payload.entry?.[0]?.messaging?.[0]?.message?.text ||
       ""
   );
 }
 
 function normalizeIncomingMessage(body) {
   const messengerEvent = body.entry?.[0]?.messaging?.[0];
-  const data = body.data || {};
-  const isOfficialSaleSmartly = body.event === "message" && body.data;
+  const payload = body || {};
+  const data = payload.data || payload;
+  const isOfficialSaleSmartly = payload.event === "message" || Boolean(payload.data);
   const timestamp =
-    body.timestamp ||
-    body.time ||
+    payload.timestamp ||
+    payload.time ||
     data.timestamp ||
     data.time ||
     data.send_time ||
@@ -438,46 +464,58 @@ function normalizeIncomingMessage(body) {
   return {
     customer_id: String(
       data.chat_user_id ||
-        body.customer_id ||
-        body.customerId ||
-        body.sender_id ||
-        data.customer_id ||
+      data.customer_id ||
+        data.user_id ||
+        data.sender ||
         data.customerId ||
         data.sender_id ||
+        payload.customer_id ||
+        payload.customerId ||
+        payload.user_id ||
+        payload.sender ||
+        payload.sender_id ||
         messengerEvent?.sender?.id ||
         "unknown"
     ),
-    session_id: String(data.chat_session_id || body.session_id || body.chat_session_id || "unknown"),
+    session_id: String(
+      data.chat_session_id ||
+        data.session_id ||
+        data.chat_session_encrypt_id ||
+        payload.session_id ||
+        payload.chat_session_id ||
+        payload.chat_session_encrypt_id ||
+        "unknown"
+    ),
     page_id: String(
-      body.page_id ||
-        body.pageId ||
-        body.recipient_id ||
-        data.page_id ||
+      data.page_id ||
         data.pageId ||
         data.recipient_id ||
+        payload.page_id ||
+        payload.pageId ||
+        payload.recipient_id ||
         messengerEvent?.recipient?.id ||
         "unknown"
     ),
-    channel: data.channel ?? body.channel ?? null,
-    channel_uid: String(data.channel_uid || body.channel_uid || "unknown"),
-    channel_name: String(data.channel_name || body.channel_name || "unknown"),
-    sender_type: data.sender_type ?? body.sender_type ?? null,
-    msg_type: data.msg_type || body.msg_type || null,
-    sequence_id: String(data.sequence_id || body.sequence_id || ""),
-    event: body.event || null,
+    channel: data.channel ?? payload.channel ?? null,
+    channel_uid: String(data.channel_uid || payload.channel_uid || "unknown"),
+    channel_name: String(data.channel_name || payload.channel_name || "unknown"),
+    sender_type: data.sender_type ?? payload.sender_type ?? null,
+    msg_type: data.msg_type || payload.msg_type || null,
+    sequence_id: String(data.sequence_id || payload.sequence_id || ""),
+    event: payload.event || null,
     customer_name: String(
-      body.customer_name ||
-        body.customerName ||
-        body.sender_name ||
-        data.customer_name ||
+      data.customer_name ||
         data.customerName ||
         data.sender_name ||
+        payload.customer_name ||
+        payload.customerName ||
+        payload.sender_name ||
         "unknown"
     ),
     message_text: getCustomerMessage(body),
     timestamp: typeof timestamp === "number" ? new Date(timestamp).toISOString() : String(timestamp),
     platform: String(
-      body.platform ||
+      payload.platform ||
         data.platform ||
         (Number(data.channel) === 1 ? "messenger" : null) ||
         (messengerEvent ? "messenger" : null) ||
@@ -488,7 +526,7 @@ function normalizeIncomingMessage(body) {
 }
 
 function formatSaleSmartlyResponse(result, incoming) {
-  const data = incoming.raw?.data || {};
+  const data = incoming.raw?.data || incoming.raw || {};
 
   return {
     code: 0,
@@ -517,10 +555,11 @@ function formatDebugResponse(result) {
 }
 
 function shouldProcessSaleSmartlyMessage(body, incoming) {
-  const isOfficialSaleSmartly = Boolean(body.event || body.data);
+  const payload = body || {};
+  const isOfficialSaleSmartly = Boolean(payload.event || payload.data);
   if (!isOfficialSaleSmartly) return Boolean(incoming.message_text.trim());
 
-  if (body.event !== "message") return false;
+  if (payload.event !== "message") return false;
   if (Number(incoming.sender_type) !== 1) return false;
   return isTextCompatibleMessage(incoming.msg_type) && Boolean(incoming.message_text.trim());
 }
