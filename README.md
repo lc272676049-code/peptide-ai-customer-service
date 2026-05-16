@@ -14,6 +14,7 @@ api/
   products.json
   prompt.md
   src/
+    saleSmartlyClient.js
     server.js
 ```
 
@@ -39,7 +40,8 @@ OPENAI_API_KEY=your_key_here
 PORT=3000
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 SALES_SMARTLY_WEBHOOK_SECRET=
-SALES_SMARTLY_API_TOKEN=
+SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
+SALES_SMARTLY_ACTIVE_SEND=false
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -242,7 +244,59 @@ There is also a prepared active-send helper, `sendSaleSmartlyMessengerMessage()`
 POST https://webhook.salesmartly.com/messenger/send
 ```
 
-It is not used by default.
+It is controlled by:
+
+```bash
+SALES_SMARTLY_ACTIVE_SEND=false
+```
+
+When `SALES_SMARTLY_ACTIVE_SEND=false`, the webhook returns the direct-response JSON above. When `SALES_SMARTLY_ACTIVE_SEND=true`, the webhook calls SaleSmartly Messenger Send API and returns:
+
+```json
+{
+  "code": 0,
+  "msg": "Success"
+}
+```
+
+### SaleSmartly Active Send
+
+Enable active send locally:
+
+```bash
+SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
+SALES_SMARTLY_ACTIVE_SEND=true
+```
+
+Required Render environment variables:
+
+```bash
+SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
+SALES_SMARTLY_ACTIVE_SEND=true
+SALES_SMARTLY_VERIFY_SIGNATURE=false
+```
+
+The active-send client uses:
+
+```text
+POST https://webhook.salesmartly.com/messenger/send
+```
+
+The request URL includes `timestamp` and `signature`. Based on SaleSmartly's API header/signature guide, the signature helper uses MD5 over the project token plus sorted URL parameters, and sends the signature in the URL plus an `external-sign` compatibility header. Do not hard-code the token.
+
+Test active send directly:
+
+```bash
+curl -X POST http://localhost:3000/api/test-salesmartly-send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_user_id": "65094291e106072b7e40ff21",
+    "chat_session_id": "130925",
+    "replyText": "Test message from AI backend"
+  }'
+```
+
+If the token is missing or invalid, this endpoint returns an error and logs the failure without printing the token.
 
 ## Conversation Logging
 
