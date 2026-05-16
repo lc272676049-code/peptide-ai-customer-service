@@ -578,43 +578,59 @@ function getSaleSmartlyRecipientId(data = {}) {
     chat_session_id: data.chat_session_id ? String(data.chat_session_id) : "",
     channel_id: data.channel_id ? String(data.channel_id) : ""
   };
-  const recipientMode = process.env.SALES_SMARTLY_RECIPIENT_ID_MODE || "chat_user_id";
+  const recipientMode = process.env.SALES_SMARTLY_RECIPIENT_ID_MODE || "channel_uid";
   let selectedRecipientId;
+  let selectedRecipientSource;
 
   switch (recipientMode) {
     case "psid":
       selectedRecipientId = candidateRecipientIds.chat_user_channelUid || candidateRecipientIds.channelInfo_psid;
+      selectedRecipientSource = candidateRecipientIds.chat_user_channelUid
+        ? "data.chat_user.channelUid"
+        : "data.channelInfo.psid";
       break;
     case "channel_uid":
       selectedRecipientId = candidateRecipientIds.channel_uid;
+      selectedRecipientSource = "data.channel_uid";
       break;
     case "chat_session_id":
       selectedRecipientId = candidateRecipientIds.chat_session_id;
+      selectedRecipientSource = "data.chat_session_id";
       break;
     case "channel_id":
       selectedRecipientId = candidateRecipientIds.channel_id;
+      selectedRecipientSource = "data.channel_id";
       break;
     case "chat_user_chatUserId":
       selectedRecipientId = candidateRecipientIds.chat_user_chatUserId;
+      selectedRecipientSource = "data.chat_user.chatUserId";
       break;
     case "auto":
-      selectedRecipientId =
-        candidateRecipientIds.chat_user_id ||
-        candidateRecipientIds.chat_user_channelUid ||
-        candidateRecipientIds.channelInfo_psid ||
-        candidateRecipientIds.channel_uid ||
-        candidateRecipientIds.chat_session_id ||
-        candidateRecipientIds.channel_id ||
-        candidateRecipientIds.chat_user_chatUserId;
+      {
+        const autoCandidates = [
+          ["data.chat_user_id", candidateRecipientIds.chat_user_id],
+          ["data.chat_user.channelUid", candidateRecipientIds.chat_user_channelUid],
+          ["data.channelInfo.psid", candidateRecipientIds.channelInfo_psid],
+          ["data.channel_uid", candidateRecipientIds.channel_uid],
+          ["data.chat_session_id", candidateRecipientIds.chat_session_id],
+          ["data.channel_id", candidateRecipientIds.channel_id],
+          ["data.chat_user.chatUserId", candidateRecipientIds.chat_user_chatUserId]
+        ];
+        const selectedCandidate = autoCandidates.find(([, value]) => value);
+        selectedRecipientSource = selectedCandidate?.[0];
+        selectedRecipientId = selectedCandidate?.[1];
+      }
       break;
     case "chat_user_id":
     default:
       selectedRecipientId = candidateRecipientIds.chat_user_id;
+      selectedRecipientSource = "data.chat_user_id";
       break;
   }
 
   console.log("SaleSmartly recipient mode:", recipientMode);
   console.log("SaleSmartly candidate recipient IDs:", candidateRecipientIds);
+  console.log("SaleSmartly selected recipient source:", selectedRecipientSource || "");
   console.log("SaleSmartly selected recipient_id:", selectedRecipientId || "");
 
   return selectedRecipientId || "";
