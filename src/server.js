@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
+import { sendSaleSmartlyMessengerMessage } from "./saleSmartlyClient.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,6 +92,36 @@ app.post("/api/generate-reply", async (req, res) => {
   res.json(result);
 });
 
+app.post("/api/test-salesmartly-send", async (req, res) => {
+  try {
+    const { chat_user_id, chat_session_id, channel, replyText } = req.body;
+    if (!chat_user_id || !chat_session_id || !replyText) {
+      return res.status(400).json({
+        success: false,
+        error: "chat_user_id, chat_session_id, and replyText are required"
+      });
+    }
+
+    const result = await sendSaleSmartlyMessengerMessage({
+      chat_user_id,
+      chat_session_id,
+      channel,
+      replyText
+    });
+
+    console.log("SaleSmartly active send success", {
+      chat_user_id,
+      chat_session_id: String(chat_session_id),
+      channel: channel || 1
+    });
+
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error("SaleSmartly active send failure", { message: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post("/webhook/salesmartly", async (req, res) => {
   if (!verifySaleSmartlySignature(req)) {
     return res.status(401).json({ code: 401, msg: "Invalid signature" });
@@ -125,6 +156,41 @@ app.post("/webhook/salesmartly", async (req, res) => {
 
   const result = await generateReply(incoming.message_text);
   await logConversation(buildConversationLog({ route: "/webhook/salesmartly", source: incoming, result }));
+
+  const activeSendEnabled = process.env.SALES_SMARTLY_ACTIVE_SEND === "true";
+  console.log("SaleSmartly active send enabled:", activeSendEnabled);
+
+  if (activeSendEnabled) {
+    try {
+      await sendSaleSmartlyMessengerMessage({
+        chat_user_id: incoming.customer_id,
+        chat_session_id: incoming.session_id,
+        channel: incoming.channel,
+        replyText: result.reply
+      });
+
+      console.log("SaleSmartly active send success", {
+        customer_id: incoming.customer_id,
+        session_id: incoming.session_id,
+        channel: incoming.channel || 1
+      });
+    } catch (error) {
+      console.error("SaleSmartly active send failure", {
+        customer_id: incoming.customer_id,
+        session_id: incoming.session_id,
+        message: error.message
+      });
+    }
+
+    if (req.query.debug === "1") {
+      return res.json({
+        ...formatDebugResponse(result),
+        active_send: true
+      });
+    }
+
+    return res.json({ code: 0, msg: "Success" });
+  }
 
   if (req.query.debug === "1") {
     return res.json(formatDebugResponse(result));
@@ -467,41 +533,6 @@ function timingSafeEqual(a, b) {
   const right = Buffer.from(String(b));
   if (left.length !== right.length) return false;
   return crypto.timingSafeEqual(left, right);
-}
-
-async function sendSaleSmartlyMessengerMessage({ chat_user_id, chat_session_id, replyText }) {
-  if (!process.env.SALES_SMARTLY_API_TOKEN) {
-    throw new Error("SALES_SMARTLY_API_TOKEN is not set");
-  }
-
-  const response = await fetch("https://webhook.salesmartly.com/messenger/send", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.SALES_SMARTLY_API_TOKEN}`
-    },
-    body: JSON.stringify({
-      data: {
-        msg_type: 3,
-        msg: {
-          template1: {
-            text: replyText
-          }
-        },
-        chat_user_id,
-        chat_session_id,
-        send_time: String(Date.now()),
-        channel: 1,
-        tag: "CONFIRMED_EVENT_UPDATE"
-      }
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`SaleSmartly active send failed: ${response.status} ${await response.text()}`);
-  }
-
-  return response.json();
 }
 
 function buildConversationLog({ route, source, result }) {
