@@ -129,8 +129,12 @@ app.post("/webhook/salesmartly", async (req, res) => {
   console.log("SaleSmartly query:", JSON.stringify(req.query, null, 2));
   console.log("SaleSmartly content-type:", req.headers["content-type"]);
 
-  const payload = req.body || {};
-  const data = payload.data || payload;
+  const parsedPayload = parseSaleSmartlyPayload(req.body);
+  if (!parsedPayload.ok) {
+    return res.json({ code: 0, msg: "Success", data: null });
+  }
+
+  const { payload, data } = parsedPayload;
   console.log("SaleSmartly webhook received");
   console.log("Full SaleSmartly body:", JSON.stringify(req.body, null, 2));
   console.log("query:", req.query);
@@ -142,12 +146,16 @@ app.post("/webhook/salesmartly", async (req, res) => {
   console.log("sender_type:", data.sender_type);
   console.log("msg_type:", data.msg_type);
   console.log("msg:", data.msg);
+  console.log("Parsed chat_user_id:", data.chat_user_id || data.customer_id || data.user_id || data.sender);
+  console.log("Parsed chat_session_id:", data.chat_session_id || data.session_id || data.chat_session_encrypt_id);
+  console.log("Parsed msg:", data.msg || data.message || data.message_text || data.text);
+  console.log("Parsed customer_name:", data.chat_user?.name || data.customer_name || data.name || "");
 
   if (!verifySaleSmartlySignature(req)) {
     return res.status(401).json({ code: 401, msg: "Invalid signature" });
   }
 
-  const incoming = normalizeIncomingMessage(req.body);
+  const incoming = normalizeIncomingMessage(req.body, data);
   if (!incoming.message_text.trim()) {
     console.log("Missing message_text. Check full body above.");
     await logConversation(buildConversationLog({
@@ -206,9 +214,9 @@ app.post("/webhook/salesmartly", async (req, res) => {
   if (activeSendEnabled) {
     try {
       await sendSaleSmartlyMessengerMessage({
-        chat_user_id: incoming.customer_id,
-        chat_session_id: incoming.session_id,
-        channel: incoming.channel,
+        chat_user_id: incoming.parsed_data.chat_user_id || incoming.customer_id,
+        chat_session_id: String(incoming.parsed_data.chat_session_id || incoming.session_id),
+        channel: incoming.parsed_data.channel || incoming.channel || 1,
         replyText: result.reply
       });
 
@@ -431,8 +439,9 @@ function recommendationCategories(message) {
 }
 
 function getCustomerMessage(body) {
-  const payload = body || {};
-  const data = payload.data || payload;
+  const parsedPayload = parseSaleSmartlyPayload(body, { logErrors: false });
+  const payload = parsedPayload.ok ? parsedPayload.payload : body || {};
+  const data = parsedPayload.ok ? parsedPayload.data : payload.data || payload;
 
   return String(
     data.msg ||
@@ -453,10 +462,10 @@ function getCustomerMessage(body) {
   );
 }
 
-function normalizeIncomingMessage(body) {
+function normalizeIncomingMessage(body, parsedData = null) {
   const messengerEvent = body.entry?.[0]?.messaging?.[0];
   const payload = body || {};
-  const data = payload.data || payload;
+  const data = parsedData || parseSaleSmartlyPayload(body, { logErrors: false }).data || payload.data || payload;
   const isOfficialSaleSmartly = payload.event === "message" || Boolean(payload.data);
   const timestamp =
     payload.timestamp ||
@@ -510,7 +519,9 @@ function normalizeIncomingMessage(body) {
     sequence_id: String(data.sequence_id || payload.sequence_id || ""),
     event: payload.event || null,
     customer_name: String(
-      data.customer_name ||
+      data.chat_user?.name ||
+        data.customer_name ||
+        data.name ||
         data.customerName ||
         data.sender_name ||
         payload.customer_name ||
@@ -527,12 +538,30 @@ function normalizeIncomingMessage(body) {
         (messengerEvent ? "messenger" : null) ||
         (isOfficialSaleSmartly ? "salesmartly" : "salesmartly")
     ),
-    raw: body
+    raw: body,
+    parsed_data: data
   };
 }
 
+function parseSaleSmartlyPayload(body, options = {}) {
+  const { logErrors = true } = options;
+  const payload = body || {};
+  let data = payload.data || payload;
+
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch (err) {
+      if (logErrors) console.error("Failed to parse SaleSmartly data string:", err.message);
+      return { ok: false, payload, data: {} };
+    }
+  }
+
+  return { ok: true, payload, data };
+}
+
 function formatSaleSmartlyResponse(result, incoming) {
-  const data = incoming.raw?.data || incoming.raw || {};
+  const data = incoming.parsed_data || {};
 
   return {
     code: 0,
@@ -540,12 +569,12 @@ function formatSaleSmartlyResponse(result, incoming) {
     data: {
       msg_type: 1,
       msg: result.reply,
-      chat_user_id: data.chat_user_id || incoming.customer_id,
-      chat_session_id: String(data.chat_session_id || incoming.session_id),
+      chat_user_id: data.chat_user_id,
+      chat_session_id: String(data.chat_session_id),
       send_time: String(Date.now()),
-      channel: data.channel ?? incoming.channel,
-      channel_uid: data.channel_uid || incoming.channel_uid,
-      channel_name: data.channel_name || incoming.channel_name
+      channel: data.channel,
+      channel_uid: data.channel_uid,
+      channel_name: data.channel_name
     }
   };
 }
