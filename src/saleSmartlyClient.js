@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 
 const SALESMARTLY_MESSENGER_SEND_URL = "https://webhook.salesmartly.com/messenger/send";
+const SALESMARTLY_MESSENGER_CHANNELS_URL = "https://webhook.salesmartly.com/messenger/channels";
+const DEFAULT_CHANNEL_UID_TO_CHECK = "136944862844891";
 
 export async function sendSaleSmartlyMessengerMessage({
   recipient_id,
@@ -12,7 +14,7 @@ export async function sendSaleSmartlyMessengerMessage({
     throw new Error("SALES_SMARTLY_API_TOKEN is not set");
   }
 
-  const sendBodyFormat = process.env.SALES_SMARTLY_SEND_BODY_FORMAT || "salesmartly_session_text";
+  const sendBodyFormat = process.env.SALES_SMARTLY_SEND_BODY_FORMAT || "official_to_text";
   const body = buildSaleSmartlySendBody({
     sendBodyFormat,
     recipient_id,
@@ -20,10 +22,14 @@ export async function sendSaleSmartlyMessengerMessage({
     replyText
   });
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signatureOrder = process.env.SALES_SMARTLY_SIGNATURE_ORDER || "alpha";
-  const raw = createSaleSmartlySignatureRaw({ token, body, timestamp, signatureOrder });
+  const raw = createSaleSmartlySendSignatureRaw({ token, body, timestamp });
   const signature = crypto.createHash("md5").update(raw).digest("hex");
-  const url = `${SALESMARTLY_MESSENGER_SEND_URL}?signature=${signature}&timestamp=${timestamp}`;
+  const url = buildSaleSmartlyUrl({
+    baseUrl: SALESMARTLY_MESSENGER_SEND_URL,
+    token,
+    timestamp,
+    signature
+  });
 
   console.log("SaleSmartly send request URL:", SALESMARTLY_MESSENGER_SEND_URL);
   console.log("SaleSmartly send body format:", sendBodyFormat);
@@ -32,10 +38,9 @@ export async function sendSaleSmartlyMessengerMessage({
   console.log("SaleSmartly chat_session_id:", saleSmartlyData.chat_session_id || "");
   console.log("SaleSmartly channel:", saleSmartlyData.channel || 1);
   console.log("SaleSmartly timestamp used:", timestamp);
-  console.log("SaleSmartly signature order:", signatureOrder);
   console.log("SaleSmartly signature prefix:", signature.slice(0, 6));
-  console.log("SaleSmartly signature raw pattern:", signatureOrder === "timestamp_data" ? "token&timestamp=...&data=..." : "token&data=...&timestamp=...");
-  console.log("SaleSmartly send query names:", ["signature", "timestamp"]);
+  console.log("SaleSmartly signature raw pattern:", "token&data=...&timestamp=...");
+  console.log("SaleSmartly send query names:", ["token", "timestamp", "signature"]);
   console.log("SaleSmartly send header names:", ["Content-Type"]);
   console.log("SaleSmartly send request body:", JSON.stringify(body, null, 2));
 
@@ -69,6 +74,54 @@ export async function sendSaleSmartlyMessengerMessage({
     http_status: response.status,
     response_text: responseText,
     parsed_response: parsed
+  };
+}
+
+export async function getSaleSmartlyMessengerChannels({
+  channelUidToCheck = DEFAULT_CHANNEL_UID_TO_CHECK
+} = {}) {
+  const token = process.env.SALES_SMARTLY_API_TOKEN;
+  if (!token) {
+    throw new Error("SALES_SMARTLY_API_TOKEN is not set");
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const raw = `${token}&timestamp=${timestamp}`;
+  const signature = crypto.createHash("md5").update(raw).digest("hex");
+  const url = buildSaleSmartlyUrl({
+    baseUrl: SALESMARTLY_MESSENGER_CHANNELS_URL,
+    token,
+    timestamp,
+    signature
+  });
+
+  console.log("SaleSmartly channels request URL:", SALESMARTLY_MESSENGER_CHANNELS_URL);
+  console.log("SaleSmartly channels query names:", ["token", "timestamp", "signature"]);
+  console.log("SaleSmartly channels timestamp used:", timestamp);
+  console.log("SaleSmartly channels signature prefix:", signature.slice(0, 6));
+  console.log("SaleSmartly channels signature raw pattern:", "token&timestamp=...");
+
+  const response = await fetch(url);
+  console.log("SaleSmartly channels HTTP status:", response.status);
+  const responseText = await response.text();
+  console.log("SaleSmartly channels response text:", responseText);
+
+  let parsed;
+  try {
+    parsed = responseText ? JSON.parse(responseText) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+
+  const includesChannelUid = responseIncludesValue(parsed ?? responseText, channelUidToCheck);
+  console.log(`SaleSmartly channels includes channel_uid ${channelUidToCheck}:`, includesChannelUid);
+
+  return {
+    ok: response.status === 200 && isSaleSmartlySuccess(parsed),
+    http_status: response.status,
+    response_text: responseText,
+    parsed_response: parsed,
+    includes_channel_uid: includesChannelUid
   };
 }
 
@@ -128,13 +181,18 @@ function validateSaleSmartlySessionData(saleSmartlyData = {}) {
   }
 }
 
-function createSaleSmartlySignatureRaw({ token, body, timestamp, signatureOrder }) {
+function createSaleSmartlySendSignatureRaw({ token, body, timestamp }) {
   const bodyJson = JSON.stringify(body);
-  if (signatureOrder === "timestamp_data") {
-    return `${token}&timestamp=${timestamp}&data=${bodyJson}`;
-  }
-
   return `${token}&data=${bodyJson}&timestamp=${timestamp}`;
+}
+
+function buildSaleSmartlyUrl({ baseUrl, token, timestamp, signature }) {
+  const params = new URLSearchParams({
+    token,
+    timestamp,
+    signature
+  });
+  return `${baseUrl}?${params.toString()}`;
 }
 
 function isSaleSmartlySuccess(parsed) {
@@ -142,5 +200,15 @@ function isSaleSmartlySuccess(parsed) {
   if (parsed.code === 0 || parsed.code === "0") return true;
   if (parsed.success === true) return true;
   if (parsed.msg === "Success" && (parsed.code === undefined || parsed.code === 0 || parsed.code === "0")) return true;
+  return false;
+}
+
+function responseIncludesValue(value, needle) {
+  if (!needle) return false;
+  if (typeof value === "string") return value.includes(needle);
+  if (Array.isArray(value)) return value.some((item) => responseIncludesValue(item, needle));
+  if (value && typeof value === "object") {
+    return Object.values(value).some((item) => responseIncludesValue(item, needle));
+  }
   return false;
 }

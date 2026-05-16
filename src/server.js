@@ -8,7 +8,10 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
-import { sendSaleSmartlyMessengerMessage } from "./saleSmartlyClient.js";
+import {
+  getSaleSmartlyMessengerChannels,
+  sendSaleSmartlyMessengerMessage
+} from "./saleSmartlyClient.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,6 +123,18 @@ app.post("/api/test-salesmartly-send", async (req, res) => {
     res.json({ success: true, result });
   } catch (error) {
     console.error("SaleSmartly active send failure", { message: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/test-salesmartly-channels", async (req, res) => {
+  try {
+    const result = await getSaleSmartlyMessengerChannels({
+      channelUidToCheck: String(req.query.channel_uid || "136944862844891")
+    });
+    res.json(result);
+  } catch (error) {
+    console.error("SaleSmartly channels test failure", { message: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });

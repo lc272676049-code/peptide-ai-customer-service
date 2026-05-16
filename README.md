@@ -42,8 +42,7 @@ SALES_SMARTLY_VERIFY_SIGNATURE=false
 SALES_SMARTLY_WEBHOOK_SECRET=
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
-SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 ```
 
@@ -269,8 +268,7 @@ Enable active send locally:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
-SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 ```
 
@@ -279,8 +277,7 @@ Required Render environment variables:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
-SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 ```
@@ -294,16 +291,16 @@ POST https://webhook.salesmartly.com/messenger/send
 The active-send body format is controlled by:
 
 ```bash
-SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 ```
 
 Supported values:
 
+- `official_to_text`: send the confirmed `to` + text format
 - `salesmartly_session_text`: send a text message using `chat_user_id` and `chat_session_id`
 - `salesmartly_session_template`: send a template text message using `chat_user_id` and `chat_session_id`
-- `official_to_text`: send the confirmed `to` + text format
 
-If `SALES_SMARTLY_SEND_BODY_FORMAT` is not set, the backend defaults to `salesmartly_session_text`.
+If `SALES_SMARTLY_SEND_BODY_FORMAT` is not set, the backend defaults to `official_to_text`.
 
 For `salesmartly_session_text`, the active-send body is:
 
@@ -352,13 +349,25 @@ For `official_to_text`, the active-send body is:
 }
 ```
 
-The request URL includes `signature` and Unix-seconds `timestamp`. The signature is MD5 of:
+The request URL includes `token`, Unix-seconds `timestamp`, and `signature`:
+
+```text
+https://webhook.salesmartly.com/messenger/send?token=...&timestamp=...&signature=...
+```
+
+For active send, the signature is MD5 of:
 
 ```text
 token&data=<JSON body>&timestamp=<timestamp>
 ```
 
-Set `SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data` only if SaleSmartly asks you to test `token&timestamp=...&data=...`. Do not hard-code or log the token.
+For `GET /messenger/channels`, the signature is MD5 of:
+
+```text
+token&timestamp=<timestamp>
+```
+
+Do not hard-code or log the token.
 
 Recipient ID selection is controlled by:
 
@@ -391,6 +400,14 @@ curl -X POST http://localhost:3000/api/test-salesmartly-send \
 ```
 
 If the token is missing or invalid, this endpoint returns an error and logs the failure without printing the token.
+
+Test SaleSmartly channels:
+
+```bash
+curl http://localhost:3000/api/test-salesmartly-channels
+```
+
+The endpoint calls `GET https://webhook.salesmartly.com/messenger/channels` with `token`, `timestamp`, and `signature` in the query string. It returns the HTTP status, response text, parsed JSON if available, and whether the response includes channel UID `136944862844891`.
 
 ## Conversation Logging
 
