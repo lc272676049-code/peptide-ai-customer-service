@@ -123,6 +123,12 @@ app.post("/api/test-salesmartly-send", async (req, res) => {
 });
 
 app.post("/webhook/salesmartly", async (req, res) => {
+  console.log("========== FULL SALES SMARTLY WEBHOOK BODY START ==========");
+  console.log(JSON.stringify(req.body, null, 2));
+  console.log("========== FULL SALES SMARTLY WEBHOOK BODY END ==========");
+  console.log("SaleSmartly query:", JSON.stringify(req.query, null, 2));
+  console.log("SaleSmartly content-type:", req.headers["content-type"]);
+
   const payload = req.body || {};
   const data = payload.data || payload;
   console.log("SaleSmartly webhook received");
