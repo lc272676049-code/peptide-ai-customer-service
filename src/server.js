@@ -94,17 +94,22 @@ app.post("/api/generate-reply", async (req, res) => {
 
 app.post("/api/test-salesmartly-send", async (req, res) => {
   try {
-    const { recipient_id, chat_user_id, replyText } = req.body;
+    const { recipient_id, chat_user_id, chat_session_id, channel, replyText } = req.body;
     const resolvedRecipientId = recipient_id || chat_user_id;
-    if (!resolvedRecipientId || !replyText) {
+    if (!replyText) {
       return res.status(400).json({
         success: false,
-        error: "recipient_id and replyText are required"
+        error: "replyText is required"
       });
     }
 
     const result = await sendSaleSmartlyMessengerMessage({
       recipient_id: resolvedRecipientId,
+      saleSmartlyData: {
+        chat_user_id,
+        chat_session_id,
+        channel
+      },
       replyText
     });
 
@@ -213,6 +218,7 @@ app.post("/webhook/salesmartly", async (req, res) => {
       const recipient_id = getSaleSmartlyRecipientId(incoming.parsed_data);
       const sendResult = await sendSaleSmartlyMessengerMessage({
         recipient_id,
+        saleSmartlyData: incoming.parsed_data,
         replyText: result.reply
       });
       console.log("SaleSmartly active send result:", sendResult);

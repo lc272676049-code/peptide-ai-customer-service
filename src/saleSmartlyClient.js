@@ -4,23 +4,21 @@ const SALESMARTLY_MESSENGER_SEND_URL = "https://webhook.salesmartly.com/messenge
 
 export async function sendSaleSmartlyMessengerMessage({
   recipient_id,
+  saleSmartlyData = {},
   replyText
 }) {
   const token = process.env.SALES_SMARTLY_API_TOKEN;
   if (!token) {
     throw new Error("SALES_SMARTLY_API_TOKEN is not set");
   }
-  if (!recipient_id) {
-    throw new Error("recipient_id is required for SaleSmartly active send");
-  }
 
-  const body = {
-    to: recipient_id,
-    message_type: "text",
-    data: {
-      text: replyText
-    }
-  };
+  const sendBodyFormat = process.env.SALES_SMARTLY_SEND_BODY_FORMAT || "salesmartly_session_text";
+  const body = buildSaleSmartlySendBody({
+    sendBodyFormat,
+    recipient_id,
+    saleSmartlyData,
+    replyText
+  });
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const signatureOrder = process.env.SALES_SMARTLY_SIGNATURE_ORDER || "alpha";
   const raw = createSaleSmartlySignatureRaw({ token, body, timestamp, signatureOrder });
@@ -28,8 +26,11 @@ export async function sendSaleSmartlyMessengerMessage({
   const url = `${SALESMARTLY_MESSENGER_SEND_URL}?signature=${signature}&timestamp=${timestamp}`;
 
   console.log("SaleSmartly send request URL:", SALESMARTLY_MESSENGER_SEND_URL);
-  console.log("SaleSmartly send body format:", process.env.SALES_SMARTLY_SEND_BODY_FORMAT || "official_to_text");
-  console.log("SaleSmartly recipient_id:", recipient_id);
+  console.log("SaleSmartly send body format:", sendBodyFormat);
+  console.log("SaleSmartly recipient_id:", recipient_id || "");
+  console.log("SaleSmartly chat_user_id:", saleSmartlyData.chat_user_id || "");
+  console.log("SaleSmartly chat_session_id:", saleSmartlyData.chat_session_id || "");
+  console.log("SaleSmartly channel:", saleSmartlyData.channel || 1);
   console.log("SaleSmartly timestamp used:", timestamp);
   console.log("SaleSmartly signature order:", signatureOrder);
   console.log("SaleSmartly signature prefix:", signature.slice(0, 6));
@@ -69,6 +70,62 @@ export async function sendSaleSmartlyMessengerMessage({
     response_text: responseText,
     parsed_response: parsed
   };
+}
+
+function buildSaleSmartlySendBody({ sendBodyFormat, recipient_id, saleSmartlyData, replyText }) {
+  if (sendBodyFormat === "salesmartly_session_template") {
+    validateSaleSmartlySessionData(saleSmartlyData);
+    return {
+      data: {
+        msg_type: 3,
+        msg: {
+          template1: {
+            text: replyText
+          }
+        },
+        chat_user_id: saleSmartlyData.chat_user_id,
+        chat_session_id: String(saleSmartlyData.chat_session_id),
+        send_time: String(Date.now()),
+        channel: saleSmartlyData.channel || 1,
+        tag: "CONFIRMED_EVENT_UPDATE"
+      }
+    };
+  }
+
+  if (sendBodyFormat === "salesmartly_session_text") {
+    validateSaleSmartlySessionData(saleSmartlyData);
+    return {
+      data: {
+        msg_type: 1,
+        msg: replyText,
+        chat_user_id: saleSmartlyData.chat_user_id,
+        chat_session_id: String(saleSmartlyData.chat_session_id),
+        send_time: String(Date.now()),
+        channel: saleSmartlyData.channel || 1
+      }
+    };
+  }
+
+  if (!recipient_id) {
+    throw new Error("recipient_id is required for SaleSmartly active send");
+  }
+
+  return {
+    to: recipient_id,
+    message_type: "text",
+    data: {
+      text: replyText
+    }
+  };
+}
+
+function validateSaleSmartlySessionData(saleSmartlyData = {}) {
+  if (!saleSmartlyData.chat_user_id) {
+    throw new Error("chat_user_id is required for SaleSmartly session active send");
+  }
+  if (!saleSmartlyData.chat_session_id) {
+    throw new Error("chat_session_id is required for SaleSmartly session active send");
+  }
 }
 
 function createSaleSmartlySignatureRaw({ token, body, timestamp, signatureOrder }) {

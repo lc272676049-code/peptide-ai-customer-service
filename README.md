@@ -42,7 +42,7 @@ SALES_SMARTLY_VERIFY_SIGNATURE=false
 SALES_SMARTLY_WEBHOOK_SECRET=
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 ```
@@ -269,7 +269,7 @@ Enable active send locally:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 ```
@@ -279,7 +279,7 @@ Required Render environment variables:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
-SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
 SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
 SALES_SMARTLY_VERIFY_SIGNATURE=false
@@ -291,7 +291,56 @@ The active-send client uses:
 POST https://webhook.salesmartly.com/messenger/send
 ```
 
-The active-send body uses SaleSmartly's confirmed Messenger format:
+The active-send body format is controlled by:
+
+```bash
+SALES_SMARTLY_SEND_BODY_FORMAT=salesmartly_session_text
+```
+
+Supported values:
+
+- `salesmartly_session_text`: send a text message using `chat_user_id` and `chat_session_id`
+- `salesmartly_session_template`: send a template text message using `chat_user_id` and `chat_session_id`
+- `official_to_text`: send the confirmed `to` + text format
+
+If `SALES_SMARTLY_SEND_BODY_FORMAT` is not set, the backend defaults to `salesmartly_session_text`.
+
+For `salesmartly_session_text`, the active-send body is:
+
+```json
+{
+  "data": {
+    "msg_type": 1,
+    "msg": "Test message from AI backend",
+    "chat_user_id": "CHAT_USER_ID",
+    "chat_session_id": "130925",
+    "send_time": "1778936424419",
+    "channel": 1
+  }
+}
+```
+
+For `salesmartly_session_template`, the active-send body is:
+
+```json
+{
+  "data": {
+    "msg_type": 3,
+    "msg": {
+      "template1": {
+        "text": "Test message from AI backend"
+      }
+    },
+    "chat_user_id": "CHAT_USER_ID",
+    "chat_session_id": "130925",
+    "send_time": "1778936424419",
+    "channel": 1,
+    "tag": "CONFIRMED_EVENT_UPDATE"
+  }
+}
+```
+
+For `official_to_text`, the active-send body is:
 
 ```json
 {
@@ -334,6 +383,9 @@ curl -X POST http://localhost:3000/api/test-salesmartly-send \
   -H "Content-Type: application/json" \
   -d '{
     "recipient_id": "26746728614994663",
+    "chat_user_id": "e5b4d759697aed8146b5c4d6e466a71e",
+    "chat_session_id": "849390414",
+    "channel": 1,
     "replyText": "Test message from AI backend"
   }'
 ```
