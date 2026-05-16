@@ -44,6 +44,7 @@ SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_RECIPIENT_ID_MODE=chat_user_id
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -270,6 +271,7 @@ SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_RECIPIENT_ID_MODE=chat_user_id
 ```
 
 Required Render environment variables:
@@ -279,6 +281,7 @@ SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_SIGNATURE_ORDER=alpha
+SALES_SMARTLY_RECIPIENT_ID_MODE=chat_user_id
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 ```
 
@@ -307,6 +310,19 @@ token&data=<JSON body>&timestamp=<timestamp>
 ```
 
 Set `SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data` only if SaleSmartly asks you to test `token&timestamp=...&data=...`. Do not hard-code or log the token.
+
+Recipient ID selection is controlled by:
+
+```bash
+SALES_SMARTLY_RECIPIENT_ID_MODE=chat_user_id
+```
+
+Supported modes:
+
+- `chat_user_id`: use `data.chat_user_id`
+- `psid`: use `data.chat_user.channelUid`, then `channelInfo.psid`
+- `channel_uid`: use `data.channel_uid`
+- `auto`: try `chat_user_id`, `chat_user.channelUid`, `channelInfo.psid`, then `channel_uid`
 
 Test active send directly:
 
