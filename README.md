@@ -43,7 +43,8 @@ SALES_SMARTLY_WEBHOOK_SECRET=
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
-SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
+SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data
+SALES_SMARTLY_RECIPIENT_ID_MODE=psid
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -243,7 +244,7 @@ https://your-domain.com/webhook/salesmartly?timestamp=TIMESTAMP&signature=SIGNAT
 There is also a prepared active-send helper, `sendSaleSmartlyMessengerMessage()`, for future use with:
 
 ```text
-POST https://webhook.salesmartly.com/messenger/send
+POST https://api.salesmartly.com/openapi/v1/messenger/send
 ```
 
 It is controlled by:
@@ -269,7 +270,8 @@ Enable active send locally:
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
-SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
+SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data
+SALES_SMARTLY_RECIPIENT_ID_MODE=psid
 ```
 
 Required Render environment variables:
@@ -278,14 +280,15 @@ Required Render environment variables:
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
-SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
+SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data
+SALES_SMARTLY_RECIPIENT_ID_MODE=psid
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 ```
 
 The active-send client uses:
 
 ```text
-POST https://webhook.salesmartly.com/messenger/send
+POST https://api.salesmartly.com/openapi/v1/messenger/send
 ```
 
 The active-send body format is controlled by:
@@ -341,21 +344,38 @@ For `official_to_text`, the active-send body is:
 
 ```json
 {
-  "to": "RECIPIENT_ID",
+  "to": "26746728614994663",
   "message_type": "text",
   "data": {
-    "text": "Test message from AI backend"
+    "text": "Test message from AI backend",
+    "metadata": {
+      "session_id": "849390414",
+      "ref_user": "e5b4d759697aed8146b5c4d6e466a71e"
+    }
   }
 }
 ```
 
-The request URL includes `token`, Unix-seconds `timestamp`, and `signature`:
+The request URL includes Unix-seconds `timestamp` and `signature`:
 
 ```text
-https://webhook.salesmartly.com/messenger/send?token=...&timestamp=...&signature=...
+https://api.salesmartly.com/openapi/v1/messenger/send?signature=...&timestamp=...
 ```
 
-For active send, the signature is MD5 of:
+The request headers include:
+
+```text
+Authorization: Bearer <SALES_SMARTLY_API_TOKEN>
+Content-Type: application/json
+```
+
+For active send, the default signature is MD5 of:
+
+```text
+token&timestamp=<timestamp>&data=<JSON body>
+```
+
+If SaleSmartly asks for alpha order, set `SALES_SMARTLY_SIGNATURE_ORDER=alpha` to use:
 
 ```text
 token&data=<JSON body>&timestamp=<timestamp>
@@ -372,18 +392,17 @@ Do not hard-code or log the token.
 Recipient ID selection is controlled by:
 
 ```bash
-SALES_SMARTLY_RECIPIENT_ID_MODE=channel_uid
+SALES_SMARTLY_RECIPIENT_ID_MODE=psid
 ```
 
 Supported modes:
 
+- `psid`: use `data.chat_user.channelUid`, then `data.chat_user.channelInfo.psid`, then `data.sender`
 - `chat_user_id`: use `data.chat_user_id`
-- `psid`: use `data.chat_user.channelUid`, then `channelInfo.psid`
-- `channel_uid`: use `data.channel_uid`
 - `chat_session_id`: use `String(data.chat_session_id)`
 - `channel_id`: use `String(data.channel_id)`
 - `chat_user_chatUserId`: use `data.chat_user.chatUserId`
-- `auto`: try `chat_user_id`, `chat_user.channelUid`, `channelInfo.psid`, `channel_uid`, `chat_session_id`, `channel_id`, then `chat_user.chatUserId`
+- `auto`: try `data.chat_user.channelUid`, `data.chat_user.channelInfo.psid`, `data.sender`, `data.channelInfo.psid`, `data.chat_user_id`, `chat_session_id`, `channel_id`, then `chat_user.chatUserId`
 
 Test active send directly:
 
@@ -407,7 +426,15 @@ Test SaleSmartly channels:
 curl http://localhost:3000/api/test-salesmartly-channels
 ```
 
-The endpoint calls `GET https://webhook.salesmartly.com/messenger/channels` with `token`, `timestamp`, and `signature` in the query string. It returns the HTTP status, response text, parsed JSON if available, and whether the response includes channel UID `136944862844891`.
+The endpoint calls `GET https://api.salesmartly.com/openapi/v1/messenger/channels` with `signature` and `timestamp` in the query string plus the `Authorization: Bearer <token>` header. It returns `ok`, `http_status`, `response_text`, and `parsed_response`.
+
+Test SaleSmartly bindings:
+
+```bash
+curl "http://localhost:3000/api/test-salesmartly-bindings?psid=26746728614994663"
+```
+
+The endpoint calls `GET https://api.salesmartly.com/openapi/v1/messenger/bindings?psid=26746728614994663` with the same signed query and Bearer auth.
 
 ## Conversation Logging
 

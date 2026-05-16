@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
 import {
+  getSaleSmartlyMessengerBindings,
   getSaleSmartlyMessengerChannels,
   sendSaleSmartlyMessengerMessage
 } from "./saleSmartlyClient.js";
@@ -129,12 +130,22 @@ app.post("/api/test-salesmartly-send", async (req, res) => {
 
 app.get("/api/test-salesmartly-channels", async (req, res) => {
   try {
-    const result = await getSaleSmartlyMessengerChannels({
-      channelUidToCheck: String(req.query.channel_uid || "136944862844891")
-    });
+    const result = await getSaleSmartlyMessengerChannels();
     res.json(result);
   } catch (error) {
     console.error("SaleSmartly channels test failure", { message: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/test-salesmartly-bindings", async (req, res) => {
+  try {
+    const result = await getSaleSmartlyMessengerBindings({
+      psid: String(req.query.psid || "")
+    });
+    res.json(result);
+  } catch (error) {
+    console.error("SaleSmartly bindings test failure", { message: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -591,28 +602,31 @@ function parseSaleSmartlyPayload(body, options = {}) {
 
 function getSaleSmartlyRecipientId(data = {}) {
   const candidateRecipientIds = {
-    chat_user_id: data.chat_user_id || "",
     chat_user_channelUid: data.chat_user?.channelUid || "",
+    chat_user_channelInfo_psid: parseSaleSmartlyChannelInfoPsid(data.chat_user?.channelInfo),
+    sender: data.sender || "",
+    chat_user_id: data.chat_user_id || "",
     chat_user_chatUserId: data.chat_user?.chatUserId || "",
     channelInfo_psid: parseSaleSmartlyChannelInfoPsid(data.channelInfo),
-    channel_uid: data.channel_uid || "",
     chat_session_id: data.chat_session_id ? String(data.chat_session_id) : "",
     channel_id: data.channel_id ? String(data.channel_id) : ""
   };
-  const recipientMode = process.env.SALES_SMARTLY_RECIPIENT_ID_MODE || "channel_uid";
+  const recipientMode = process.env.SALES_SMARTLY_RECIPIENT_ID_MODE || "psid";
   let selectedRecipientId;
   let selectedRecipientSource;
 
   switch (recipientMode) {
     case "psid":
-      selectedRecipientId = candidateRecipientIds.chat_user_channelUid || candidateRecipientIds.channelInfo_psid;
-      selectedRecipientSource = candidateRecipientIds.chat_user_channelUid
-        ? "data.chat_user.channelUid"
-        : "data.channelInfo.psid";
-      break;
-    case "channel_uid":
-      selectedRecipientId = candidateRecipientIds.channel_uid;
-      selectedRecipientSource = "data.channel_uid";
+      {
+        const psidCandidates = [
+          ["data.chat_user.channelUid", candidateRecipientIds.chat_user_channelUid],
+          ["data.chat_user.channelInfo.psid", candidateRecipientIds.chat_user_channelInfo_psid],
+          ["data.sender", candidateRecipientIds.sender]
+        ];
+        const selectedCandidate = psidCandidates.find(([, value]) => value);
+        selectedRecipientSource = selectedCandidate?.[0];
+        selectedRecipientId = selectedCandidate?.[1];
+      }
       break;
     case "chat_session_id":
       selectedRecipientId = candidateRecipientIds.chat_session_id;
@@ -629,10 +643,11 @@ function getSaleSmartlyRecipientId(data = {}) {
     case "auto":
       {
         const autoCandidates = [
-          ["data.chat_user_id", candidateRecipientIds.chat_user_id],
           ["data.chat_user.channelUid", candidateRecipientIds.chat_user_channelUid],
+          ["data.chat_user.channelInfo.psid", candidateRecipientIds.chat_user_channelInfo_psid],
+          ["data.sender", candidateRecipientIds.sender],
           ["data.channelInfo.psid", candidateRecipientIds.channelInfo_psid],
-          ["data.channel_uid", candidateRecipientIds.channel_uid],
+          ["data.chat_user_id", candidateRecipientIds.chat_user_id],
           ["data.chat_session_id", candidateRecipientIds.chat_session_id],
           ["data.channel_id", candidateRecipientIds.channel_id],
           ["data.chat_user.chatUserId", candidateRecipientIds.chat_user_chatUserId]
