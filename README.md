@@ -41,7 +41,9 @@ PORT=3000
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 SALES_SMARTLY_WEBHOOK_SECRET=
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
-SALES_SMARTLY_ACTIVE_SEND=false
+SALES_SMARTLY_ACTIVE_SEND=true
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SIGNATURE_ORDER=alpha
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -247,7 +249,7 @@ POST https://webhook.salesmartly.com/messenger/send
 It is controlled by:
 
 ```bash
-SALES_SMARTLY_ACTIVE_SEND=false
+SALES_SMARTLY_ACTIVE_SEND=true
 ```
 
 When `SALES_SMARTLY_ACTIVE_SEND=false`, the webhook returns the direct-response JSON above. When `SALES_SMARTLY_ACTIVE_SEND=true`, the webhook calls SaleSmartly Messenger Send API and returns:
@@ -266,6 +268,8 @@ Enable active send locally:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SIGNATURE_ORDER=alpha
 ```
 
 Required Render environment variables:
@@ -273,6 +277,8 @@ Required Render environment variables:
 ```bash
 SALES_SMARTLY_API_TOKEN=your_salesmartly_api_token_here
 SALES_SMARTLY_ACTIVE_SEND=true
+SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
+SALES_SMARTLY_SIGNATURE_ORDER=alpha
 SALES_SMARTLY_VERIFY_SIGNATURE=false
 ```
 
@@ -282,7 +288,25 @@ The active-send client uses:
 POST https://webhook.salesmartly.com/messenger/send
 ```
 
-The request URL includes `timestamp` and `signature`. Based on SaleSmartly's API header/signature guide, the signature helper uses MD5 over the project token plus sorted URL parameters, and sends the signature in the URL plus an `external-sign` compatibility header. Do not hard-code the token.
+The active-send body uses SaleSmartly's confirmed Messenger format:
+
+```json
+{
+  "to": "RECIPIENT_PSID",
+  "message_type": "text",
+  "data": {
+    "text": "Test message from AI backend"
+  }
+}
+```
+
+The request URL includes `signature` and Unix-seconds `timestamp`. The signature is MD5 of:
+
+```text
+token&data=<JSON body>&timestamp=<timestamp>
+```
+
+Set `SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data` only if SaleSmartly asks you to test `token&timestamp=...&data=...`. Do not hard-code or log the token.
 
 Test active send directly:
 
@@ -290,8 +314,7 @@ Test active send directly:
 curl -X POST http://localhost:3000/api/test-salesmartly-send \
   -H "Content-Type: application/json" \
   -d '{
-    "chat_user_id": "65094291e106072b7e40ff21",
-    "chat_session_id": "130925",
+    "recipient_id": "26746728614994663",
     "replyText": "Test message from AI backend"
   }'
 ```

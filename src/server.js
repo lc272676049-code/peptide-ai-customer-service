@@ -94,25 +94,22 @@ app.post("/api/generate-reply", async (req, res) => {
 
 app.post("/api/test-salesmartly-send", async (req, res) => {
   try {
-    const { chat_user_id, chat_session_id, channel, replyText } = req.body;
-    if (!chat_user_id || !chat_session_id || !replyText) {
+    const { recipient_id, chat_user_id, replyText } = req.body;
+    const resolvedRecipientId = recipient_id || chat_user_id;
+    if (!resolvedRecipientId || !replyText) {
       return res.status(400).json({
         success: false,
-        error: "chat_user_id, chat_session_id, and replyText are required"
+        error: "recipient_id and replyText are required"
       });
     }
 
     const result = await sendSaleSmartlyMessengerMessage({
-      chat_user_id,
-      chat_session_id,
-      channel,
+      recipient_id: resolvedRecipientId,
       replyText
     });
 
     console.log("SaleSmartly active send success", {
-      chat_user_id,
-      chat_session_id: String(chat_session_id),
-      channel: channel || 1
+      recipient_id: resolvedRecipientId
     });
 
     res.json({ success: true, result });
@@ -213,22 +210,23 @@ app.post("/webhook/salesmartly", async (req, res) => {
 
   if (activeSendEnabled) {
     try {
+      const recipient_id = getSaleSmartlyRecipientId(incoming.parsed_data);
       const sendResult = await sendSaleSmartlyMessengerMessage({
-        chat_user_id: incoming.parsed_data.chat_user_id || incoming.customer_id,
-        chat_session_id: String(incoming.parsed_data.chat_session_id || incoming.session_id),
-        channel: incoming.parsed_data.channel || incoming.channel || 1,
+        recipient_id,
         replyText: result.reply
       });
       console.log("SaleSmartly active send result:", sendResult);
 
       if (sendResult.ok) {
         console.log("SaleSmartly active send success", {
+          recipient_id,
           customer_id: incoming.customer_id,
           session_id: incoming.session_id,
           channel: incoming.channel || 1
         });
       } else {
         console.error("SaleSmartly active send failure", {
+          recipient_id,
           customer_id: incoming.customer_id,
           session_id: incoming.session_id,
           http_status: sendResult.http_status,
@@ -568,6 +566,28 @@ function parseSaleSmartlyPayload(body, options = {}) {
   }
 
   return { ok: true, payload, data };
+}
+
+function getSaleSmartlyRecipientId(data = {}) {
+  return (
+    data.chat_user?.channelUid ||
+    parseSaleSmartlyChannelInfoPsid(data.channelInfo) ||
+    data.channel_uid ||
+    data.chat_user_id ||
+    ""
+  );
+}
+
+function parseSaleSmartlyChannelInfoPsid(channelInfo) {
+  if (!channelInfo) return "";
+
+  try {
+    const parsed = typeof channelInfo === "string" ? JSON.parse(channelInfo) : channelInfo;
+    return parsed?.psid || "";
+  } catch (error) {
+    console.error("Failed to parse SaleSmartly channelInfo:", error.message);
+    return "";
+  }
 }
 
 function formatSaleSmartlyResponse(result, incoming) {
