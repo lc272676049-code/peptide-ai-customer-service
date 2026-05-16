@@ -213,18 +213,28 @@ app.post("/webhook/salesmartly", async (req, res) => {
 
   if (activeSendEnabled) {
     try {
-      await sendSaleSmartlyMessengerMessage({
+      const sendResult = await sendSaleSmartlyMessengerMessage({
         chat_user_id: incoming.parsed_data.chat_user_id || incoming.customer_id,
         chat_session_id: String(incoming.parsed_data.chat_session_id || incoming.session_id),
         channel: incoming.parsed_data.channel || incoming.channel || 1,
         replyText: result.reply
       });
+      console.log("SaleSmartly active send result:", sendResult);
 
-      console.log("SaleSmartly active send success", {
-        customer_id: incoming.customer_id,
-        session_id: incoming.session_id,
-        channel: incoming.channel || 1
-      });
+      if (sendResult.ok) {
+        console.log("SaleSmartly active send success", {
+          customer_id: incoming.customer_id,
+          session_id: incoming.session_id,
+          channel: incoming.channel || 1
+        });
+      } else {
+        console.error("SaleSmartly active send failure", {
+          customer_id: incoming.customer_id,
+          session_id: incoming.session_id,
+          http_status: sendResult.http_status,
+          parsed_response: sendResult.parsed_response
+        });
+      }
     } catch (error) {
       console.error("SaleSmartly active send failure", {
         customer_id: incoming.customer_id,
