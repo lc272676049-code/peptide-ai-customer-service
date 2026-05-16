@@ -123,6 +123,15 @@ app.post("/api/test-salesmartly-send", async (req, res) => {
 });
 
 app.post("/webhook/salesmartly", async (req, res) => {
+  console.log("SaleSmartly webhook received");
+  console.log("event:", req.body.event);
+  console.log("chat_user_id:", req.body?.data?.chat_user_id);
+  console.log("chat_session_id:", req.body?.data?.chat_session_id);
+  console.log("channel:", req.body?.data?.channel);
+  console.log("sender_type:", req.body?.data?.sender_type);
+  console.log("msg_type:", req.body?.data?.msg_type);
+  console.log("msg:", req.body?.data?.msg);
+
   if (!verifySaleSmartlySignature(req)) {
     return res.status(401).json({ code: 401, msg: "Invalid signature" });
   }
@@ -155,6 +164,13 @@ app.post("/webhook/salesmartly", async (req, res) => {
   }
 
   const result = await generateReply(incoming.message_text);
+  const replyText = result.reply;
+  const human_takeover = result.human_takeover;
+  const matchedProducts = result.products || [];
+  console.log("AI reply:", replyText);
+  console.log("human_takeover:", human_takeover);
+  console.log("matched_products:", matchedProducts);
+
   await logConversation(buildConversationLog({ route: "/webhook/salesmartly", source: incoming, result }));
 
   const activeSendEnabled = process.env.SALES_SMARTLY_ACTIVE_SEND === "true";
