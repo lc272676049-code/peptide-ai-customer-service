@@ -572,8 +572,11 @@ function getSaleSmartlyRecipientId(data = {}) {
   const candidateRecipientIds = {
     chat_user_id: data.chat_user_id || "",
     chat_user_channelUid: data.chat_user?.channelUid || "",
+    chat_user_chatUserId: data.chat_user?.chatUserId || "",
     channelInfo_psid: parseSaleSmartlyChannelInfoPsid(data.channelInfo),
-    channel_uid: data.channel_uid || ""
+    channel_uid: data.channel_uid || "",
+    chat_session_id: data.chat_session_id ? String(data.chat_session_id) : "",
+    channel_id: data.channel_id ? String(data.channel_id) : ""
   };
   const recipientMode = process.env.SALES_SMARTLY_RECIPIENT_ID_MODE || "chat_user_id";
   let selectedRecipientId;
@@ -585,12 +588,24 @@ function getSaleSmartlyRecipientId(data = {}) {
     case "channel_uid":
       selectedRecipientId = candidateRecipientIds.channel_uid;
       break;
+    case "chat_session_id":
+      selectedRecipientId = candidateRecipientIds.chat_session_id;
+      break;
+    case "channel_id":
+      selectedRecipientId = candidateRecipientIds.channel_id;
+      break;
+    case "chat_user_chatUserId":
+      selectedRecipientId = candidateRecipientIds.chat_user_chatUserId;
+      break;
     case "auto":
       selectedRecipientId =
         candidateRecipientIds.chat_user_id ||
         candidateRecipientIds.chat_user_channelUid ||
         candidateRecipientIds.channelInfo_psid ||
-        candidateRecipientIds.channel_uid;
+        candidateRecipientIds.channel_uid ||
+        candidateRecipientIds.chat_session_id ||
+        candidateRecipientIds.channel_id ||
+        candidateRecipientIds.chat_user_chatUserId;
       break;
     case "chat_user_id":
     default:

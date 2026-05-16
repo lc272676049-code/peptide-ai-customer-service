@@ -322,7 +322,10 @@ Supported modes:
 - `chat_user_id`: use `data.chat_user_id`
 - `psid`: use `data.chat_user.channelUid`, then `channelInfo.psid`
 - `channel_uid`: use `data.channel_uid`
-- `auto`: try `chat_user_id`, `chat_user.channelUid`, `channelInfo.psid`, then `channel_uid`
+- `chat_session_id`: use `String(data.chat_session_id)`
+- `channel_id`: use `String(data.channel_id)`
+- `chat_user_chatUserId`: use `data.chat_user.chatUserId`
+- `auto`: try `chat_user_id`, `chat_user.channelUid`, `channelInfo.psid`, `channel_uid`, `chat_session_id`, `channel_id`, then `chat_user.chatUserId`
 
 Test active send directly:
 
