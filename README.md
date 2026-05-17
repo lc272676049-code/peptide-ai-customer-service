@@ -147,6 +147,18 @@ Expected:
 }
 ```
 
+### SaleSmartly Custom Agent
+
+`/agent/salesmartly` accepts multiple common Custom Agent request formats, including `message`, `msg`, `text`, `query`, `content`, `customer_message`, and nested `data.msg`, `data.message`, or `data.text`.
+
+```bash
+curl -X POST http://localhost:3000/agent/salesmartly \
+  -H "Content-Type: application/json" \
+  -d '{"data":{"msg":"How much is Reta 30mg?"}}'
+```
+
+The response includes compatible reply aliases: `reply`, `answer`, `content`, `text`, and the same fields inside `data`.
+
 ### SaleSmartly Webhook
 
 `POST /webhook/salesmartly` accepts the official SaleSmartly incoming message payload.

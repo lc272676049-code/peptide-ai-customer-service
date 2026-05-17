@@ -96,6 +96,34 @@ app.post("/api/generate-reply", async (req, res) => {
   res.json(result);
 });
 
+app.all("/agent/salesmartly", async (req, res) => {
+  try {
+    console.log("Agent endpoint received");
+    const body = req.method === "GET" ? req.query : req.body;
+    const messageText = getCustomerMessage(body);
+    console.log("Agent extracted message_text:", messageText);
+
+    const result = await generateReply(messageText);
+    console.log("Agent generated reply:", result.reply);
+    console.log("Agent human_takeover:", result.human_takeover);
+
+    await logConversation(buildConversationLog({
+      route: "/agent/salesmartly",
+      source: normalizeIncomingMessage({ ...body, message_text: messageText, platform: "salesmartly_agent" }),
+      result
+    }));
+
+    res.json(formatAgentResponse(result));
+  } catch (error) {
+    console.error("SaleSmartly agent endpoint failure", { message: error.message });
+    res.status(500).json({
+      code: 1,
+      msg: "Error",
+      error: error.message
+    });
+  }
+});
+
 app.post("/api/test-salesmartly-send", async (req, res) => {
   try {
     const { recipient_id, chat_user_id, chat_session_id, channel, replyText } = req.body;
@@ -710,6 +738,29 @@ function formatDebugResponse(result) {
     human_takeover: result.human_takeover,
     lead_stage: result.lead_stage,
     matched_products: result.products || []
+  };
+}
+
+function formatAgentResponse(result) {
+  const replyText = result.reply || "";
+  const matchedProducts = result.products || [];
+
+  return {
+    reply: replyText,
+    answer: replyText,
+    content: replyText,
+    text: replyText,
+    code: 0,
+    msg: "Success",
+    data: {
+      reply: replyText,
+      answer: replyText,
+      content: replyText,
+      text: replyText
+    },
+    human_takeover: Boolean(result.human_takeover),
+    lead_stage: result.lead_stage || detectLeadStage("", matchedProducts, result.human_takeover),
+    matched_products: matchedProducts
   };
 }
 
