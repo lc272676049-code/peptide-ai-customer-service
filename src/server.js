@@ -99,17 +99,34 @@ app.post("/api/generate-reply", async (req, res) => {
 app.all("/agent/salesmartly", async (req, res) => {
   try {
     console.log("Agent endpoint received");
+    console.log("Custom agent endpoint received");
     const body = req.method === "GET" ? req.query : req.body;
     const messageText = getCustomerMessage(body);
+    const customAgentContext = extractCustomAgentContext(body);
+    logCustomAgentPayloadSummary(body, customAgentContext);
     console.log("Agent extracted message_text:", messageText);
+    console.log("Custom agent extracted message_text:", messageText);
 
     const result = await generateReply(messageText);
     console.log("Agent generated reply:", result.reply);
     console.log("Agent human_takeover:", result.human_takeover);
+    console.log("Custom agent generated reply:", result.reply);
+    console.log("Custom agent human_takeover:", result.human_takeover);
+
+    await sendCustomRobotReply({
+      originalPayload: body,
+      replyText: result.reply
+    });
 
     await logConversation(buildConversationLog({
       route: "/agent/salesmartly",
-      source: normalizeIncomingMessage({ ...body, message_text: messageText, platform: "salesmartly_agent" }),
+      source: normalizeIncomingMessage({
+        ...body,
+        customer_id: customAgentContext.customer_id,
+        session_id: customAgentContext.session_id,
+        message_text: messageText,
+        platform: "salesmartly_agent"
+      }),
       result
     }));
 
@@ -264,8 +281,12 @@ app.post("/webhook/salesmartly", async (req, res) => {
 
   await logConversation(buildConversationLog({ route: "/webhook/salesmartly", source: incoming, result }));
 
-  const activeSendEnabled = process.env.SALES_SMARTLY_ACTIVE_SEND === "true";
+  const activeSendEnabled =
+    process.env.SALES_SMARTLY_ACTIVE_SEND === "true" && !isCustomRobotConfigured();
   console.log("SaleSmartly active send enabled:", activeSendEnabled);
+  if (isCustomRobotConfigured()) {
+    console.log("SaleSmartly OpenAPI active send skipped because Custom Robot reply URL is configured.");
+  }
 
   if (activeSendEnabled) {
     try {
@@ -530,6 +551,49 @@ function getCustomerMessage(body) {
   );
 }
 
+function extractCustomAgentContext(body) {
+  const parsedPayload = parseSaleSmartlyPayload(body, { logErrors: false });
+  const payload = parsedPayload.ok ? parsedPayload.payload : body || {};
+  const data = parsedPayload.ok ? parsedPayload.data : payload.data || payload;
+
+  return {
+    customer_id: String(
+      data.customer_id ||
+        data.chat_user_id ||
+        data.user_id ||
+        data.sender ||
+        payload.customer_id ||
+        payload.chat_user_id ||
+        payload.user_id ||
+        payload.sender ||
+        ""
+    ),
+    session_id: String(
+      data.chat_session_id ||
+        data.session_id ||
+        data.chat_session_encrypt_id ||
+        payload.chat_session_id ||
+        payload.session_id ||
+        payload.chat_session_encrypt_id ||
+        ""
+    )
+  };
+}
+
+function logCustomAgentPayloadSummary(body, context) {
+  const parsedPayload = parseSaleSmartlyPayload(body, { logErrors: false });
+  const payload = parsedPayload.ok ? parsedPayload.payload : body || {};
+  const data = parsedPayload.ok ? parsedPayload.data : payload.data || {};
+
+  console.log("Custom agent payload top-level keys:", Object.keys(payload));
+  console.log("Custom agent payload data keys:", data && typeof data === "object" ? Object.keys(data) : []);
+  console.log("Custom agent session/message identifiers:", {
+    customer_id: context.customer_id || "",
+    session_id: context.session_id || "",
+    has_message: Boolean(getCustomerMessage(body))
+  });
+}
+
 function normalizeIncomingMessage(body, parsedData = null) {
   const messengerEvent = body.entry?.[0]?.messaging?.[0];
   const payload = body || {};
@@ -762,6 +826,73 @@ function formatAgentResponse(result) {
     lead_stage: result.lead_stage || detectLeadStage("", matchedProducts, result.human_takeover),
     matched_products: matchedProducts
   };
+}
+
+async function sendCustomRobotReply({ originalPayload, replyText }) {
+  const replyUrl =
+    process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL ||
+    "https://msg.salesmartly.com/custom-robot/webhook";
+  const accessToken = process.env.SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN || "";
+  const context = extractCustomAgentContext(originalPayload);
+
+  if (!replyUrl) {
+    console.log("SaleSmartly custom robot reply URL is not configured.");
+    return { sent: false, http_status: null, response_text: "" };
+  }
+
+  const body = {
+    access_token: accessToken,
+    reply: replyText,
+    message: replyText,
+    content: replyText,
+    text: replyText,
+    data: {
+      content: replyText,
+      text: replyText
+    },
+    session_id: context.session_id,
+    customer_id: context.customer_id
+  };
+
+  console.log("Custom robot reply URL called");
+  console.log("SaleSmartly custom robot reply URL:", replyUrl);
+  console.log("SaleSmartly custom robot reply body keys:", Object.keys(body));
+  console.log("SaleSmartly custom robot reply data keys:", Object.keys(body.data));
+
+  try {
+    const response = await fetch(replyUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    console.log("Custom robot reply HTTP status:", response.status);
+    console.log("SaleSmartly custom robot reply URL HTTP status:", response.status);
+    const responseText = await response.text();
+    console.log("Custom robot reply response text:", responseText);
+    console.log("SaleSmartly custom robot reply URL response text:", responseText);
+
+    return {
+      sent: response.ok,
+      http_status: response.status,
+      response_text: responseText
+    };
+  } catch (error) {
+    console.error("SaleSmartly custom robot reply URL failure", { message: error.message });
+    return {
+      sent: false,
+      http_status: null,
+      response_text: error.message
+    };
+  }
+}
+
+function isCustomRobotConfigured() {
+  return Boolean(
+    process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL ||
+      process.env.SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN
+  );
 }
 
 function shouldProcessSaleSmartlyMessage(body, incoming) {

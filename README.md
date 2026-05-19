@@ -45,6 +45,8 @@ SALES_SMARTLY_ACTIVE_SEND=true
 SALES_SMARTLY_SEND_BODY_FORMAT=official_to_text
 SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data
 SALES_SMARTLY_RECIPIENT_ID_MODE=psid
+SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL=https://msg.salesmartly.com/custom-robot/webhook
+SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN=your_custom_robot_access_token_here
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -151,10 +153,42 @@ Expected:
 
 `/agent/salesmartly` accepts multiple common Custom Agent request formats, including `message`, `msg`, `text`, `query`, `content`, `customer_message`, and nested `data.msg`, `data.message`, or `data.text`.
 
+Set the Custom Agent receive URL in SaleSmartly to:
+
+```text
+https://your-domain.com/agent/salesmartly
+```
+
+The backend posts the generated AI reply to:
+
+```bash
+SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL=https://msg.salesmartly.com/custom-robot/webhook
+```
+
+using `SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN` in the JSON body as `access_token`. The token value is never logged.
+
+The current reply body includes top-level reply aliases plus nested `data.content` and `data.text`:
+
+```json
+{
+  "access_token": "CUSTOM_ROBOT_ACCESS_TOKEN",
+  "content": "AI reply",
+  "text": "AI reply",
+  "reply": "AI reply",
+  "message": "AI reply",
+  "data": {
+    "content": "AI reply",
+    "text": "AI reply"
+  },
+  "session_id": "session_001",
+  "customer_id": "customer_001"
+}
+```
+
 ```bash
 curl -X POST http://localhost:3000/agent/salesmartly \
   -H "Content-Type: application/json" \
-  -d '{"data":{"msg":"How much is Reta 30mg?"}}'
+  -d '{"data":{"msg":"How much is Reta 30mg?","chat_user_id":"customer_001","chat_session_id":"session_001"}}'
 ```
 
 The response includes compatible reply aliases: `reply`, `answer`, `content`, `text`, and the same fields inside `data`.
@@ -273,6 +307,8 @@ When `SALES_SMARTLY_ACTIVE_SEND=false`, the webhook returns the direct-response 
   "msg": "Success"
 }
 ```
+
+When the Custom Robot reply URL or access token is configured, `/webhook/salesmartly` skips OpenAPI active send so the Custom Agent reply flow remains the primary delivery path.
 
 ### SaleSmartly Active Send
 
