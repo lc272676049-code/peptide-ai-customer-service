@@ -47,6 +47,7 @@ SALES_SMARTLY_SIGNATURE_ORDER=timestamp_data
 SALES_SMARTLY_RECIPIENT_ID_MODE=psid
 SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL=https://msg.salesmartly.com/custom-robot/webhook
 SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN=your_custom_robot_access_token_here
+SALES_SMARTLY_CUSTOM_ROBOT_REPLY_MODE=access_token_body
 ```
 
 The backend reads the API key only from `process.env.OPENAI_API_KEY`. Never expose it to frontend code.
@@ -165,9 +166,22 @@ The backend posts the generated AI reply to:
 SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL=https://msg.salesmartly.com/custom-robot/webhook
 ```
 
-using `SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN` in the JSON body as `access_token`. The token value is never logged.
+using `SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN`. The token value is never logged.
 
-The current reply body includes top-level reply aliases plus nested `data.content` and `data.text`:
+The custom robot reply token placement is configurable:
+
+```bash
+SALES_SMARTLY_CUSTOM_ROBOT_REPLY_MODE=access_token_body
+```
+
+Supported modes:
+
+- `access_token_body`: send `access_token` in JSON body
+- `accessToken_body`: send `accessToken` in JSON body
+- `token_body`: send `token` in JSON body
+- `bearer_header`: send `Authorization: Bearer <token>` header
+
+Every mode includes the AI reply plus available SaleSmartly identifiers:
 
 ```json
 {
@@ -176,12 +190,15 @@ The current reply body includes top-level reply aliases plus nested `data.conten
   "text": "AI reply",
   "reply": "AI reply",
   "message": "AI reply",
-  "data": {
-    "content": "AI reply",
-    "text": "AI reply"
-  },
   "session_id": "session_001",
-  "customer_id": "customer_001"
+  "customer_id": "customer_001",
+  "chat_user_id": "customer_001",
+  "chat_session_id": "session_001",
+  "chat_session_encrypt_id": "",
+  "sequence_id": "",
+  "mid": "",
+  "channel": 1,
+  "channel_uid": ""
 }
 ```
 

@@ -833,38 +833,50 @@ async function sendCustomRobotReply({ originalPayload, replyText }) {
     process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL ||
     "https://msg.salesmartly.com/custom-robot/webhook";
   const accessToken = process.env.SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN || "";
+  const replyMode = process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_MODE || "access_token_body";
   const context = extractCustomAgentContext(originalPayload);
+  const data = getCustomAgentData(originalPayload);
 
   if (!replyUrl) {
     console.log("SaleSmartly custom robot reply URL is not configured.");
     return { sent: false, http_status: null, response_text: "" };
   }
 
-  const body = {
-    access_token: accessToken,
+  const baseBody = {
     reply: replyText,
     message: replyText,
     content: replyText,
     text: replyText,
-    data: {
-      content: replyText,
-      text: replyText
-    },
     session_id: context.session_id,
-    customer_id: context.customer_id
+    customer_id: context.customer_id,
+    chat_user_id: data.chat_user_id ?? "",
+    chat_session_id: data.chat_session_id != null ? String(data.chat_session_id) : "",
+    chat_session_encrypt_id: data.chat_session_encrypt_id ?? "",
+    sequence_id: data.sequence_id != null ? String(data.sequence_id) : "",
+    mid: data.mid ?? "",
+    channel: data.channel ?? "",
+    channel_uid: data.channel_uid ?? ""
   };
+  const { body, headers } = buildCustomRobotReplyRequest({
+    mode: replyMode,
+    accessToken,
+    baseBody
+  });
 
   console.log("Custom robot reply URL called");
   console.log("SaleSmartly custom robot reply URL:", replyUrl);
+  console.log("Custom robot reply mode:", replyMode);
+  console.log("Custom robot reply token info:", maskTokenInfo(accessToken));
   console.log("SaleSmartly custom robot reply body keys:", Object.keys(body));
-  console.log("SaleSmartly custom robot reply data keys:", Object.keys(body.data));
+  console.log("Custom robot reply header names:", Object.keys(headers));
+  if (body.data && typeof body.data === "object") {
+    console.log("SaleSmartly custom robot reply data keys:", Object.keys(body.data));
+  }
 
   try {
     const response = await fetch(replyUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify(body)
     });
     console.log("Custom robot reply HTTP status:", response.status);
@@ -886,6 +898,46 @@ async function sendCustomRobotReply({ originalPayload, replyText }) {
       response_text: error.message
     };
   }
+}
+
+function getCustomAgentData(body) {
+  const parsedPayload = parseSaleSmartlyPayload(body, { logErrors: false });
+  const payload = parsedPayload.ok ? parsedPayload.payload : body || {};
+  return parsedPayload.ok ? parsedPayload.data : payload.data || payload;
+}
+
+function buildCustomRobotReplyRequest({ mode, accessToken, baseBody }) {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  const body = { ...baseBody };
+
+  switch (mode) {
+    case "bearer_header":
+      headers.Authorization = `Bearer ${accessToken}`;
+      break;
+    case "accessToken_body":
+      body.accessToken = accessToken;
+      break;
+    case "token_body":
+      body.token = accessToken;
+      break;
+    case "access_token_body":
+    default:
+      body.access_token = accessToken;
+      break;
+  }
+
+  return { body, headers };
+}
+
+function maskTokenInfo(token) {
+  const value = String(token || "");
+  return {
+    exists: Boolean(value),
+    length: value.length,
+    preview: value.length > 6 ? `${value.slice(0, 3)}***${value.slice(-3)}` : "***"
+  };
 }
 
 function isCustomRobotConfigured() {
