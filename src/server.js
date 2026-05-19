@@ -833,8 +833,7 @@ async function sendCustomRobotReply({ originalPayload, replyText }) {
     process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_URL ||
     "https://msg.salesmartly.com/custom-robot/webhook";
   const accessToken = process.env.SALES_SMARTLY_CUSTOM_ROBOT_ACCESS_TOKEN || "";
-  const replyMode = process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_MODE || "access_token_body";
-  const context = extractCustomAgentContext(originalPayload);
+  const replyMode = process.env.SALES_SMARTLY_CUSTOM_ROBOT_REPLY_MODE || "multipart_bearer";
   const data = getCustomAgentData(originalPayload);
 
   if (!replyUrl) {
@@ -842,42 +841,29 @@ async function sendCustomRobotReply({ originalPayload, replyText }) {
     return { sent: false, http_status: null, response_text: "" };
   }
 
-  const baseBody = {
-    reply: replyText,
-    message: replyText,
-    content: replyText,
-    text: replyText,
-    session_id: context.session_id,
-    customer_id: context.customer_id,
-    chat_user_id: data.chat_user_id ?? "",
-    chat_session_id: data.chat_session_id != null ? String(data.chat_session_id) : "",
-    chat_session_encrypt_id: data.chat_session_encrypt_id ?? "",
-    sequence_id: data.sequence_id != null ? String(data.sequence_id) : "",
-    mid: data.mid ?? "",
-    channel: data.channel ?? "",
-    channel_uid: data.channel_uid ?? ""
-  };
-  const { body, headers } = buildCustomRobotReplyRequest({
+  const { body, headers, fieldNames, missingRequiredFields, resolvedMode } = buildCustomRobotReplyRequest({
     mode: replyMode,
     accessToken,
-    baseBody
+    payloadData: data,
+    replyText
   });
 
   console.log("Custom robot reply URL called");
   console.log("SaleSmartly custom robot reply URL:", replyUrl);
-  console.log("Custom robot reply mode:", replyMode);
-  console.log("Custom robot reply token info:", maskTokenInfo(accessToken));
-  console.log("SaleSmartly custom robot reply body keys:", Object.keys(body));
+  console.log("Custom robot reply mode:", resolvedMode);
+  const tokenInfo = maskTokenInfo(accessToken);
+  console.log("Custom robot token exists:", tokenInfo.exists);
+  console.log("Custom robot token length:", tokenInfo.length);
+  console.log("Custom robot token preview:", tokenInfo.preview);
+  console.log("Custom robot reply form field names:", fieldNames);
+  console.log("Missing custom robot required fields:", missingRequiredFields);
   console.log("Custom robot reply header names:", Object.keys(headers));
-  if (body.data && typeof body.data === "object") {
-    console.log("SaleSmartly custom robot reply data keys:", Object.keys(body.data));
-  }
 
   try {
     const response = await fetch(replyUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify(body)
+      body
     });
     console.log("Custom robot reply HTTP status:", response.status);
     console.log("SaleSmartly custom robot reply URL HTTP status:", response.status);
@@ -906,29 +892,58 @@ function getCustomAgentData(body) {
   return parsedPayload.ok ? parsedPayload.data : payload.data || payload;
 }
 
-function buildCustomRobotReplyRequest({ mode, accessToken, baseBody }) {
-  const headers = {
-    "Content-Type": "application/json"
-  };
-  const body = { ...baseBody };
-
-  switch (mode) {
-    case "bearer_header":
-      headers.Authorization = `Bearer ${accessToken}`;
-      break;
-    case "accessToken_body":
-      body.accessToken = accessToken;
-      break;
-    case "token_body":
-      body.token = accessToken;
-      break;
-    case "access_token_body":
-    default:
-      body.access_token = accessToken;
-      break;
+function buildCustomRobotReplyRequest({ mode, accessToken, payloadData, replyText }) {
+  const resolvedMode = mode === "multipart_bearer" ? mode : "multipart_bearer";
+  if (resolvedMode !== mode) {
+    console.warn("Unsupported custom robot reply mode; falling back to multipart_bearer:", mode);
   }
 
-  return { body, headers };
+  const fields = {
+    project_id: String(payloadData.project_id || payloadData.chat_user?.projectId || ""),
+    chat_user_id: String(payloadData.chat_user_id || ""),
+    message: replyText,
+    message_type: "1",
+    robot_id: String(payloadData.robot_id || process.env.SALES_SMARTLY_CUSTOM_ROBOT_ID || ""),
+    robot_name: String(
+      payloadData.robot_name ||
+        process.env.SALES_SMARTLY_CUSTOM_ROBOT_NAME ||
+        "Peptide AI Customer Service"
+    ),
+    channel: payloadData.channel != null ? String(payloadData.channel) : "",
+    channel_id: payloadData.channel_id != null ? String(payloadData.channel_id) : "",
+    module: String(payloadData.module || "online")
+  };
+
+  if (payloadData.sequence_id != null && String(payloadData.sequence_id)) {
+    fields.sequence_id = String(payloadData.sequence_id);
+  }
+
+  const requiredFieldNames = [
+    "project_id",
+    "chat_user_id",
+    "message",
+    "message_type",
+    "robot_id",
+    "robot_name",
+    "channel",
+    "channel_id",
+    "module"
+  ];
+  const missingRequiredFields = requiredFieldNames.filter((fieldName) => !fields[fieldName]);
+  const body = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    body.append(key, value);
+  }
+
+  return {
+    body,
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    fieldNames: Object.keys(fields),
+    missingRequiredFields,
+    resolvedMode
+  };
 }
 
 function maskTokenInfo(token) {
